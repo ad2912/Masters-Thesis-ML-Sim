@@ -25,8 +25,8 @@ alias cdanalysis='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/analysis'
 alias cdcog='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/cognitive-state'
 
 # quick simulation launchers
-alias runsim-ml='ddsim --compactFile $k4geo_DIR/ILD/compact/ILD_l5_v02/ILD_l5_v02.xml --steeringFile /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering/gamma_ML-ddsim_steer.py'
-alias runsim-g4='ddsim --compactFile $k4geo_DIR/ILD/compact/ILD_l5_v02/ILD_l5_v02.xml --steeringFile /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering/gamma-ddsim_steer.py'
+#alias runsim-ml='ddsim --compactFile $k4geo_DIR/ILD/compact/ILD_l5_v02/ILD_l5_v02.xml --steeringFile /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering/gamma_ML-ddsim_steer.py'
+#alias runsim-g4='ddsim --compactFile $k4geo_DIR/ILD/compact/ILD_l5_v02/ILD_l5_v02.xml --steeringFile /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering/gamma-ddsim_steer.py'
 
 # sanity check alias — run this if you suspect env is broken
 alias checkenv='ldd $DDML_INSTALL/lib/libDDML.so | grep "not found" && echo "BROKEN: missing libs" || echo "OK: all libs resolved"'
