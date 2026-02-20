@@ -13,9 +13,17 @@ DDML_INSTALL=/afs/desy.de/user/a/alimuham/key4hep_tut_ild_reco/DDML/install
 source $DDML_INSTALL/bin/thisDDML.sh
 
 # --- 3. Missing runtime libs (torch + onnxruntime) ----------
-K4H=/cvmfs/sw.hsf.org/key4hep/releases/2026-02-01/x86_64-almalinux9-gcc14.2.0-opt
-export LD_LIBRARY_PATH=$K4H/py-torch/2.9.1-fl7w5y/lib/python3.13/site-packages/torch/lib:$LD_LIBRARY_PATH
-export LD_LIBRARY_PATH=$K4H/py-onnxruntime/1.22.2-haobv5/lib64:$LD_LIBRARY_PATH
+#K4H=/cvmfs/sw.hsf.org/key4hep/releases/2026-02-01/x86_64-almalinux9-gcc14.2.0-opt
+#export LD_LIBRARY_PATH=$K4H/py-torch/2.9.1-fl7w5y/lib/python3.13/site-packages/torch/lib:$LD_LIBRARY_PATH
+#export LD_LIBRARY_PATH=$K4H/py-onnxruntime/1.22.2-haobv5/lib64:$LD_LIBRARY_PATH
+# --- 3. Missing runtime libs (dynamic, version-independent) ---
+TORCH_PATH=$(dirname $(python3 -c 'import torch; print(torch.__file__)'))
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:${TORCH_PATH}/lib
+
+ONNXRUNTIME_PATH=$(dirname $(python3 -c 'import onnxruntime; print(onnxruntime.__file__)'))
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$(realpath ${ONNXRUNTIME_PATH}/../../../../)/lib64
+export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$(realpath ${ONNXRUNTIME_PATH}/../../../../)/lib
+
 
 # --- 4. Aliases ---------------------------------------------
 alias cdwork='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim'
