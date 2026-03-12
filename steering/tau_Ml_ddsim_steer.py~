@@ -18,7 +18,7 @@ SIM.crossingAngleBoost = 7.e-3*rad
 SIM.enableDetailedShowerMode = True
 SIM.enableG4GPS = False
 SIM.enableG4Gun = False
-SIM.enableGun = True
+SIM.enableGun = False #provide filtered particle genertor input file 
 ## InputFiles for simulation .stdhep, .slcio, .HEPEvt, .hepevt, .hepmc, .pairs files are supported
 SIM.inputFiles = []
 ## Macro file to execute for runType 'run' or 'vis'
@@ -26,12 +26,12 @@ SIM.macroFile = ""
 ## number of events to simulate, used in batch mode
 SIM.numberOfEvents = 1000
 ## Outputfile from the simulation,only lcio output is supported
-SIM.outputFile = "tautest_gun_SIM.edm4hep.root"
+SIM.outputFile = "tau_pi0_SIM_caloclouds.edm4hep.root"
 ## Physics list to use in simulation
 SIM.physicsList = None
 ## Verbosity use integers from 1(most) to 7(least) verbose
 ## or strings: VERBOSE, DEBUG, INFO, WARNING, ERROR, FATAL, ALWAYS
-SIM.printLevel = "DEBUG"
+SIM.printLevel = "ALWAYS"
 ## The type of action to do in this invocation
 ## batch: just simulate some events, needs numberOfEvents, and input file or gun
 ## vis: enable visualisation, run the macroFile if it is set

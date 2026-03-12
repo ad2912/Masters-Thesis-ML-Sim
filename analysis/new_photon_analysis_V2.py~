@@ -1,0 +1,314 @@
+"""
+photon_analysis_v3.py
+=====================
+Reco photon analysis: Geant4 (3 parts merged) vs CaloClouds.
+Reads reco files only. MC truth angles are handled separately
+by mc_angle_analysis.py.
+
+Plots produced (all raw counts, saved to ~/thesis-ml-sim/plots/photon-analysis/):
+  1. Energy spectrum  — G4 vs CC total vs CC ML component (log y)
+  2. Energy breakdown — G4 vs CC-G4-type vs CC-ML (log y)
+  3. Reco theta       — G4 vs CC total
+  4. Reco theta       — CC breakdown: G4-type vs ML vs full G4
+  5. Reco phi         — G4 vs CC total
+  6. Reco phi         — CC breakdown: G4-type vs ML vs full G4
+
+Run with:
+    source ~/source.sh
+    python3 photon_analysis_v3.py
+"""
+
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from podio import root_io
+import os
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PATHS
+# ─────────────────────────────────────────────────────────────────────────────
+REC_G4_P1 = "/data/dust/user/alimuham/thesis/reco/tau_geant4_part1_REC.edm4hep.root"
+REC_G4_P2 = "/data/dust/user/alimuham/thesis/reco/tau_geant4_part2_REC.edm4hep.root"
+REC_G4_P3 = "/data/dust/user/alimuham/thesis/reco/tau_geant4_part3_REC.edm4hep.root"
+REC_CC    = "/data/dust/user/alimuham/thesis/reco/tau_caloclouds_REC.edm4hep.root"
+
+PLOT_DIR  = os.path.expanduser("~/thesis-ml-sim/plots/photon-analysis")
+os.makedirs(PLOT_DIR, exist_ok=True)
+
+PHOTON_PDG    = 22
+ML_THRESHOLD  = 10
+ML_ENERGY_GEV = 10.0
+
+ECAL_RELATIONS = [
+    "EcalBarrelRelationsSimRec",
+    "EcalEndcapsRelationsSimRec",
+    "EcalEndcapRingRelationsSimRec",
+]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# COLOURS
+# ─────────────────────────────────────────────────────────────────────────────
+C_G4    = "#2166ac"   # blue   — full Geant4
+C_CC    = "#d6604d"   # red    — CaloClouds total
+C_ML    = "#f4a582"   # orange — ML-classified
+C_CC_G4 = "#4dac26"   # green  — G4-type inside CC
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STYLE
+# ─────────────────────────────────────────────────────────────────────────────
+plt.rcParams.update({
+    "font.family"      : "serif",
+    "font.size"        : 12,
+    "axes.titlesize"   : 13,
+    "axes.labelsize"   : 12,
+    "legend.fontsize"  : 10,
+    "axes.spines.top"  : False,
+    "axes.spines.right": False,
+    "figure.dpi"       : 150,
+})
+
+def sim_label(ax):
+    ax.text(0.01, 1.01, "ILD simulation (preliminary)",
+            transform=ax.transAxes, fontsize=9, color="gray", va="bottom")
+
+def save(fig, name):
+    path = f"{PLOT_DIR}/{name}"
+    fig.savefig(path, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  ✓  {name}")
+
+def to_angles(px, py, pz):
+    p = np.sqrt(px**2 + py**2 + pz**2)
+    if p == 0:
+        return 0.0, 0.0
+    theta = np.degrees(np.arccos(np.clip(pz / p, -1, 1)))
+    phi   = np.degrees(np.arctan2(py, px))
+    return theta, phi
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOADERS
+# ─────────────────────────────────────────────────────────────────────────────
+def load_g4_reco(path, label):
+    reader = root_io.Reader(path)
+    e_list, th_list, ph_list = [], [], []
+    for event in reader.get("events"):
+        for pfo in event.get("PandoraPFOs"):
+            if pfo.getPDG() != PHOTON_PDG:
+                continue
+            e_list.append(pfo.getEnergy())
+            mom = pfo.getMomentum()
+            th, ph = to_angles(mom.x, mom.y, mom.z)
+            th_list.append(th)
+            ph_list.append(ph)
+    print(f"  {label}: {len(e_list)} reco photons")
+    return np.array(e_list), np.array(th_list), np.array(ph_list)
+
+
+def load_cc_reco(path, label):
+    reader = root_io.Reader(path)
+    ml_e,  ml_th,  ml_ph  = [], [], []
+    g4_e,  g4_th,  g4_ph  = [], [], []
+    n_unmatched = 0
+
+    for event in reader.get("events"):
+        hit_lookup = {}
+        for rel_name in ECAL_RELATIONS:
+            try:
+                for rel in event.get(rel_name):
+                    hit_lookup[rel.getFrom().getObjectID().index] = rel.getTo()
+            except Exception:
+                pass
+
+        for pfo in event.get("PandoraPFOs"):
+            if pfo.getPDG() != PHOTON_PDG:
+                continue
+
+            ml_count = 0
+            for cluster in pfo.getClusters():
+                for rec_hit in cluster.getHits():
+                    sim_hit = hit_lookup.get(rec_hit.getObjectID().index)
+                    if sim_hit is None:
+                        n_unmatched += 1
+                        continue
+                    for contrib in sim_hit.getContributions():
+                        if contrib.getStepLength() == 0:
+                            ml_count += 1
+                            break
+
+            e = pfo.getEnergy()
+            mom = pfo.getMomentum()
+            th, ph = to_angles(mom.x, mom.y, mom.z)
+
+            if ml_count > ML_THRESHOLD:
+                ml_e.append(e);  ml_th.append(th);  ml_ph.append(ph)
+            else:
+                g4_e.append(e);  g4_th.append(th);  g4_ph.append(ph)
+
+    total = len(ml_e) + len(g4_e)
+    print(f"  {label}: {total} reco photons total")
+    print(f"    → ML-classified : {len(ml_e)}  ({100*len(ml_e)/max(total,1):.1f}%)")
+    print(f"    → G4-classified : {len(g4_e)}  ({100*len(g4_e)/max(total,1):.1f}%)")
+    if n_unmatched > 0:
+        print(f"    ⚠ Unmatched hits : {n_unmatched}")
+
+    return (np.array(ml_e),  np.array(ml_th),  np.array(ml_ph),
+            np.array(g4_e),  np.array(g4_th),  np.array(g4_ph))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LOAD DATA
+# ─────────────────────────────────────────────────────────────────────────────
+print("\n" + "="*60)
+print("  Loading Geant4 reco (3 parts)")
+print("="*60)
+g4_e_1, g4_th_1, g4_ph_1 = load_g4_reco(REC_G4_P1, "G4 part1 (775 events)")
+g4_e_2, g4_th_2, g4_ph_2 = load_g4_reco(REC_G4_P2, "G4 part2  (28 events)")
+g4_e_3, g4_th_3, g4_ph_3 = load_g4_reco(REC_G4_P3, "G4 part3 (195 events)")
+
+g4_e  = np.concatenate([g4_e_1,  g4_e_2,  g4_e_3])
+g4_th = np.concatenate([g4_th_1, g4_th_2, g4_th_3])
+g4_ph = np.concatenate([g4_ph_1, g4_ph_2, g4_ph_3])
+print(f"  G4 MERGED: {len(g4_e)} reco photons across 998 events")
+
+print("\n" + "="*60)
+print("  Loading CaloClouds reco + ML classification")
+print("="*60)
+ml_e, ml_th, ml_ph, ccg4_e, ccg4_th, ccg4_ph = load_cc_reco(REC_CC, "CaloClouds")
+cc_e  = np.concatenate([ml_e,  ccg4_e])
+cc_th = np.concatenate([ml_th, ccg4_th])
+cc_ph = np.concatenate([ml_ph, ccg4_ph])
+
+print(f"\n  {'Category':<38}  {'N':>5}  {'Mean E':>8}")
+print(f"  {'-'*38}  {'-'*5}  {'-'*8}")
+print(f"  {'Geant4 reco (998 events)':<38}  "
+      f"{len(g4_e):>5}  {np.mean(g4_e):>7.2f} GeV")
+print(f"  {'CaloClouds reco (1000 events)':<38}  "
+      f"{len(cc_e):>5}  {np.mean(cc_e):>7.2f} GeV")
+print(f"  {'  └─ ML-classified':<38}  "
+      f"{len(ml_e):>5}  {np.mean(ml_e) if len(ml_e)>0 else 0:>7.2f} GeV")
+print(f"  {'  └─ G4-classified (in CC)':<38}  "
+      f"{len(ccg4_e):>5}  "
+      f"{np.mean(ccg4_e) if len(ccg4_e)>0 else 0:>7.2f} GeV")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PLOTS
+# ─────────────────────────────────────────────────────────────────────────────
+print("\n" + "="*60)
+print("  Saving plots")
+print("="*60)
+
+bins_e  = np.linspace(0,    130, 80)
+bins_th = np.linspace(0,    180, 50)
+bins_ph = np.linspace(-180, 180, 50)
+
+
+# ── PLOT 1: Combined energy spectrum
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.hist(g4_e, bins=bins_e, histtype="step", color=C_G4,
+        linewidth=2, label=f"Full Geant4  (N={len(g4_e)})")
+ax.hist(cc_e, bins=bins_e, histtype="step", color=C_CC,
+        linewidth=2, linestyle="--",
+        label=f"CaloClouds total  (N={len(cc_e)})")
+ax.hist(ml_e, bins=bins_e, histtype="stepfilled", color=C_ML,
+        alpha=0.6, label=f"CaloClouds — ML photons  (N={len(ml_e)})")
+ax.hist(ml_e, bins=bins_e, histtype="step", color=C_ML, linewidth=1.5)
+ax.axvline(ML_ENERGY_GEV, color="black", linestyle=":", linewidth=1.5,
+           label=f"ML trigger = {ML_ENERGY_GEV} GeV")
+ax.set_xlabel("Reconstructed Photon Energy [GeV]")
+ax.set_ylabel("Photons / bin")
+ax.set_title("Reco Photon Energy Spectrum")
+ax.set_yscale("log")
+ax.legend()
+sim_label(ax)
+save(fig, "plot1_energy_combined.png")
+
+
+# ── PLOT 2: Energy breakdown
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.hist(g4_e,   bins=bins_e, histtype="step", color=C_G4,
+        linewidth=2.5, label=f"Full Geant4  (N={len(g4_e)})")
+ax.hist(ccg4_e, bins=bins_e, histtype="step", color=C_CC_G4,
+        linewidth=2, linestyle="--",
+        label=f"CC — G4-type  (N={len(ccg4_e)})")
+ax.hist(ml_e,   bins=bins_e, histtype="step", color=C_ML,
+        linewidth=2, linestyle="-.",
+        label=f"CC — ML photons  (N={len(ml_e)})")
+ax.axvline(ML_ENERGY_GEV, color="black", linestyle=":", linewidth=1.5,
+           label=f"ML trigger = {ML_ENERGY_GEV} GeV")
+ax.set_xlabel("Reconstructed Photon Energy [GeV]")
+ax.set_ylabel("Photons / bin")
+ax.set_title("Reco Photon Energy — Full Breakdown")
+ax.set_yscale("log")
+ax.legend()
+sim_label(ax)
+save(fig, "plot2_energy_breakdown.png")
+
+
+# ── PLOT 3: Reco theta — G4 vs CC total
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.hist(g4_th, bins=bins_th, histtype="step", color=C_G4,
+        linewidth=2, label=f"Full Geant4  (N={len(g4_th)})")
+ax.hist(cc_th, bins=bins_th, histtype="step", color=C_CC,
+        linewidth=2, linestyle="--",
+        label=f"CaloClouds total  (N={len(cc_th)})")
+ax.set_xlabel("Reco Photon Polar Angle θ [degrees]")
+ax.set_ylabel("Photons / bin")
+ax.set_title("Reco Photon θ Distribution\nGeant4 vs CaloClouds (raw counts)")
+ax.legend()
+sim_label(ax)
+save(fig, "plot3_reco_theta_g4_vs_cc.png")
+
+
+# ── PLOT 4: Reco theta — CC breakdown
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.hist(g4_th,   bins=bins_th, histtype="step", color=C_G4,
+        linewidth=2, label=f"Full Geant4  (N={len(g4_th)})")
+ax.hist(ccg4_th, bins=bins_th, histtype="step", color=C_CC_G4,
+        linewidth=2, linestyle="--",
+        label=f"CC — G4-type  (N={len(ccg4_th)})")
+ax.hist(ml_th,   bins=bins_th, histtype="step", color=C_ML,
+        linewidth=2, linestyle="-.",
+        label=f"CC — ML photons  (N={len(ml_th)})")
+ax.set_xlabel("Reco Photon Polar Angle θ [degrees]")
+ax.set_ylabel("Photons / bin")
+ax.set_title("Reco Photon θ — CC Breakdown\nvs Full Geant4 (raw counts)")
+ax.legend()
+sim_label(ax)
+save(fig, "plot4_reco_theta_breakdown.png")
+
+
+# ── PLOT 5: Reco phi — G4 vs CC total
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.hist(g4_ph, bins=bins_ph, histtype="step", color=C_G4,
+        linewidth=2, label=f"Full Geant4  (N={len(g4_ph)})")
+ax.hist(cc_ph, bins=bins_ph, histtype="step", color=C_CC,
+        linewidth=2, linestyle="--",
+        label=f"CaloClouds total  (N={len(cc_ph)})")
+ax.set_xlabel("Reco Photon Azimuthal Angle φ [degrees]")
+ax.set_ylabel("Photons / bin")
+ax.set_title("Reco Photon φ Distribution\nGeant4 vs CaloClouds (raw counts)")
+ax.legend()
+sim_label(ax)
+save(fig, "plot5_reco_phi_g4_vs_cc.png")
+
+
+# ── PLOT 6: Reco phi — CC breakdown
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.hist(g4_ph,   bins=bins_ph, histtype="step", color=C_G4,
+        linewidth=2, label=f"Full Geant4  (N={len(g4_ph)})")
+ax.hist(ccg4_ph, bins=bins_ph, histtype="step", color=C_CC_G4,
+        linewidth=2, linestyle="--",
+        label=f"CC — G4-type  (N={len(ccg4_ph)})")
+ax.hist(ml_ph,   bins=bins_ph, histtype="step", color=C_ML,
+        linewidth=2, linestyle="-.",
+        label=f"CC — ML photons  (N={len(ml_ph)})")
+ax.set_xlabel("Reco Photon Azimuthal Angle φ [degrees]")
+ax.set_ylabel("Photons / bin")
+ax.set_title("Reco Photon φ — CC Breakdown\nvs Full Geant4 (raw counts)")
+ax.legend()
+sim_label(ax)
+save(fig, "plot6_reco_phi_breakdown.png")
+
+
+print(f"\n  All 6 plots saved to: {PLOT_DIR}")

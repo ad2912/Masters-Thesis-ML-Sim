@@ -1,2 +1,6 @@
+reconstruction/
 cognitive-state/
+simulation_log_1kevents.txt
+*.log
+*.root
 

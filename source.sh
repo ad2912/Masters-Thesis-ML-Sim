@@ -1,4 +1,5 @@
 #!/bin/bash
+[[ $- != *i* ]] && return
 # ============================================================
 #  source.sh — NAF startup ritual for ML shower simulation
 #  Usage: source ~/source.sh
@@ -24,14 +25,17 @@ ONNXRUNTIME_PATH=$(dirname $(python3 -c 'import onnxruntime; print(onnxruntime._
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$(realpath ${ONNXRUNTIME_PATH}/../../../../)/lib64
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH}:$(realpath ${ONNXRUNTIME_PATH}/../../../../)/lib
 
+# --- 4. Streamlined Aliases ---------------------------------
+# Navigate by simply typing the name
+alias thesis='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim'
+alias steering='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering'
+alias results='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/results'
+alias analysis='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/analysis'
+alias cog='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/cognitive-state'
 
-# --- 4. Aliases ---------------------------------------------
-alias cdwork='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim'
-alias cdprod='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering'
-alias cdresults='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/results'
-alias cdanalysis='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/analysis'
-alias cdcog='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/cognitive-state'
-
+# DUST navigation
+alias dust='cd /data/dust/user/alimuham/thesis/sim'
+export DUST='/data/dust/user/alimuham/thesis/sim'
 # quick simulation launchers
 #alias runsim-ml='ddsim --compactFile $k4geo_DIR/ILD/compact/ILD_l5_v02/ILD_l5_v02.xml --steeringFile /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering/gamma_ML-ddsim_steer.py'
 #alias runsim-g4='ddsim --compactFile $k4geo_DIR/ILD/compact/ILD_l5_v02/ILD_l5_v02.xml --steeringFile /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering/gamma-ddsim_steer.py'
