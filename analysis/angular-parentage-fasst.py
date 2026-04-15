@@ -1,0 +1,53 @@
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import os
+
+G4_NPZ, CC3_NPZ = "/afs/desy.de/user/a/alimuham/thesis-ml-sim/analysis/npz_files/g4_master.npz", "/afs/desy.de/user/a/alimuham/thesis-ml-sim/analysis/npz_files/cc3_master.npz"
+PLOT_DIR = os.path.expanduser("~/thesis-ml-sim/plots/angular_parentage_100k")
+os.makedirs(PLOT_DIR, exist_ok=True)
+
+E_THRESH = 10.0
+BINS_THETA, BINS_PHI = np.arange(0, 182, 2), np.arange(-180, 183, 3)
+THETA_BOUNDARIES = [40.0, 140.0]
+
+C_PI0, C_ISR, C_FSR, C_OTHER = "#2166ac", "#d6604d", "#4dac26", "#7b2d8b"
+LEGEND_MAP = {
+    0: {"color": C_PI0, "ls": "-", "label": "π⁰ daughter"},
+    1: {"color": C_ISR, "ls": "--", "label": "ISR / e± parent"},
+    2: {"color": C_FSR, "ls": "-.", "label": "FSR (τ parent)"},
+    3: {"color": C_OTHER, "ls": ":", "label": "Other / secondary"},
+}
+
+plt.rcParams.update({"font.family": "serif", "font.size": 12, "figure.dpi": 150})
+
+def plot_angular(angle_arr, cat_arr, bins, xlabel, title, filename, vlines=None, sublabel=""):
+    fig, ax = plt.subplots(figsize=(11, 6))
+    for c, style in LEGEND_MAP.items():
+        mask = cat_arr == c
+        if np.sum(mask) > 0:
+            ax.hist(angle_arr[mask], bins=bins, histtype="step", lw=2, color=style["color"], ls=style["ls"], 
+                    label=f"{style['label']} (N={int(np.sum(mask))})")
+    if vlines:
+        for xv in vlines: ax.axvline(xv, color="steelblue", lw=1.0, ls=":", alpha=0.7)
+    ax.set_yscale("log")
+    ax.set_ylabel("Photons / bin [raw counts]")
+    ax.set_title(title)
+    ax.legend(loc="upper right")
+    ax.text(0.01, 1.01, f"ILD sim — 100k events | {sublabel}", transform=ax.transAxes, fontsize=8, color="gray", va="bottom")
+    plt.tight_layout()
+    fig.savefig(f"{PLOT_DIR}/{filename}", bbox_inches="tight")
+    plt.close(fig)
+
+g4, cc = np.load(G4_NPZ), np.load(CC3_NPZ)
+for label, d, px in [("Geant4", g4, "g4"), ("CaloClouds3", cc, "cc3")]:
+    m_all = np.ones(len(d['theta']), dtype=bool)
+    m_gs1 = (d["stat"] == 1)
+    m_e10 = (d["stat"] == 1) & (d["e"] >= E_THRESH)
+    
+    for mask, suffix, lab in [(m_all, "all", "all"), (m_gs1, "gs1", "gs1"), (m_e10, "gs1_e10", "gs1, E>=10")]:
+        plot_angular(d["theta"][mask], d["cat"][mask], BINS_THETA, "θ", f"θ | {label}\n{lab}", f"{px}_theta_{suffix}.png", THETA_BOUNDARIES, lab)
+        plot_angular(d["phi"][mask], d["cat"][mask], BINS_PHI, "φ", f"φ | {label}\n{lab}", f"{px}_phi_{suffix}.png", None, lab)
+
+print(f"Angular plots saved to {PLOT_DIR}")
