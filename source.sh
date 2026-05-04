@@ -7,7 +7,8 @@
 # ============================================================
 
 # --- 1. Key4hep environment ---------------------------------
-source /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2026-02-01
+#source /cvmfs/sw.hsf.org/key4hep/setup.sh -r 2026-02-01
+source /cvmfs/sw-nightlies.hsf.org/key4hep/setup.sh --lcg #rebuild DDML
 
 # --- 2. DDML plugin + official setup ------------------------
 DDML_INSTALL=/afs/desy.de/user/a/alimuham/key4hep_tut_ild_reco/DDML/install
@@ -34,7 +35,8 @@ alias analysis='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/analysis'
 alias cog='cd /afs/desy.de/user/a/alimuham/thesis-ml-sim/cognitive-state'
 
 # DUST navigation
-alias dust='cd /data/dust/user/alimuham/thesis/sim'
+alias dusts='cd /data/dust/user/alimuham/thesis/sim'
+alias dustr='cd /data/dust/user/alimuham/thesis/reco'
 export DUST='/data/dust/user/alimuham/thesis/sim'
 # quick simulation launchers
 #alias runsim-ml='ddsim --compactFile $k4geo_DIR/ILD/compact/ILD_l5_v02/ILD_l5_v02.xml --steeringFile /afs/desy.de/user/a/alimuham/thesis-ml-sim/steering/gamma_ML-ddsim_steer.py'
@@ -43,13 +45,17 @@ export DUST='/data/dust/user/alimuham/thesis/sim'
 # sanity check alias — run this if you suspect env is broken
 alias checkenv='ldd $DDML_INSTALL/lib/libDDML.so | grep "not found" && echo "BROKEN: missing libs" || echo "OK: all libs resolved"'
 
+# temporary local version of k4MarlinWrapper for working around some issues
+export LD_LIBRARY_PATH=$HOME/key4hep_tut_ild_reco/k4MarlinWrapper/install/lib64:$LD_LIBRARY_PATH
+export PYTHONPATH=$HOME/key4hep_tut_ild_reco/k4MarlinWrapper/install/python:$PYTHONPATH
+
 # --- 5. Go to working directory -----------------------------
 cd /afs/desy.de/user/a/alimuham/thesis-ml-sim
 
 echo ""
 echo "================================================"
 echo "  ML Sim environment ready"
-echo "  Key4hep : 2026-02-01"
+echo " Key4hep : nightly ($(date +%Y-%m-%d))"
 echo "  DDML    : $DDML_INSTALL"
 echo "  Workdir : $(pwd)"
 echo "================================================"

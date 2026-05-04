@@ -1,0 +1,244 @@
+"""
+reco_photon_funnel.py
+=====================
+Diagnostic funnel table for reconstructed photons.
+Prints a side-by-side table for G4 and CC3 reco files.
+
+Each row narrows the sample by one cut:
+  1. PFOs with PDG == 22
+  2. Of those: have a RecoMCTruthLink match
+  3. Of matched: matched MC particle has genStatus == 1
+  4. Of those: MC energy >= 10 GeV
+  5. Of those: MC parent PDG == 111 (pi0 daughter)
+  6. Of those: MC parent PDG != 11 (not ISR)  [applied to row 4, not row 5]
+  7. Of row-6 photons: isHandledByFastSim() == True  [CC3 only]
+
+Row 6 and 7 branch from row 4 (genstat==1, E>=10 GeV), not from row 5,
+because ISR-rejection and pi0-daughter are two independent signal definitions.
+Row 5 is "strict signal" (pi0 daughter). Row 6 is "ISR-cleaned signal".
+Row 7 shows what fraction of the ISR-cleaned signal was fast-simmed in CC3.
+
+Physics purpose: understand what Pandora reconstructed from the two shower
+simulations before making any comparison plots. Every subsequent plot should
+be consistent with the counts in this table.
+
+Run:
+    source ~/source.sh
+    python3 reco_photon_funnel.py
+"""
+
+import os
+from podio import root_io
+
+# ─── File paths ───────────────────────────────────────────────────────────────
+G4_FILE  = "/data/dust/user/alimuham/thesis/reco/tau-pi0-g4-taureco-1000events-test_REC.edm4hep.root"
+CC3_FILE = "/data/dust/user/alimuham/thesis/reco/tau-pi0-cc3-taureco-1000events-test_REC.edm4hep.root"
+
+PHOTON_PDG = 22
+PI0_PDG    = 111
+ELECTRON_PDG = 11
+E_THRESH   = 10.0
+MAX_EVENTS = 1000
+
+
+def process_file(label, path, is_cc3=False):
+    """
+    Single pass through a reco file.
+    Builds the funnel counts by walking:
+        PandoraPFOs → RecoMCTruthLink → MCParticles
+    """
+    if not os.path.exists(path):
+        print(f"  ERROR: File not found: {path}")
+        return None
+
+    reader = root_io.Reader(path)
+
+    # ── Counters ──────────────────────────────────────────────────────────────
+    n_events         = 0
+    c_pfo_pdg22      = 0   # row 1: PFOs with PDG == 22
+    c_has_link       = 0   # row 2: PDG==22 PFOs with a RecoMCTruthLink match
+    c_genstat1       = 0   # row 3: matched MC has genStatus == 1
+    c_e10            = 0   # row 4: genStatus==1 and MC E >= 10 GeV
+    c_pi0_daughter   = 0   # row 5: genStatus==1, E>=10, parent is pi0
+    c_not_isr        = 0   # row 6: genStatus==1, E>=10, parent is not electron (not ISR)
+    c_fastsim        = 0   # row 7: of row-6, isHandledByFastSim (CC3 only)
+
+    # ── Build reverse link map once per event ─────────────────────────────────
+    # RecoMCTruthLink is Link<ReconstructedParticle, MCParticle>.
+    # We iterate it to build: pfo_index -> MCParticle object
+    # This avoids O(n^2) searching.
+
+    for event in reader.get("events"):
+        if n_events >= MAX_EVENTS:
+            break
+        n_events += 1
+
+        # Build pfo_index -> mc_particle map from RecoMCTruthLink
+        reco_to_mc = {}
+        try:
+            for link in event.get("RecoMCTruthLink"):
+                reco = link.getFrom()
+                mc   = link.getTo()
+                reco_idx = reco.getObjectID().index
+                reco_to_mc[reco_idx] = mc
+        except Exception as e:
+            # If collection missing, skip event silently
+            continue
+
+        # Walk PandoraPFOs
+        try:
+            pfos = list(event.get("PandoraPFOs"))
+        except Exception:
+            continue
+
+        for pfo in pfos:
+            if pfo.getType() != PHOTON_PDG:
+                continue
+            c_pfo_pdg22 += 1
+
+            # Row 2: does this PFO have a truth link?
+            pfo_idx = pfo.getObjectID().index
+            mc = reco_to_mc.get(pfo_idx, None)
+            if mc is None:
+                continue
+            c_has_link += 1
+
+            # Row 3: is the matched MC particle a genStatus==1 photon?
+            if mc.getGeneratorStatus() != 1:
+                continue
+            if mc.getPDG() != PHOTON_PDG:
+                continue
+            c_genstat1 += 1
+
+            # Row 4: MC energy >= 10 GeV?
+            mc_energy = mc.getEnergy()
+            if mc_energy < E_THRESH:
+                continue
+            c_e10 += 1
+
+            # Get parent PDGs for rows 5 and 6
+            parent_pdgs = [abs(par.getPDG()) for par in mc.getParents()]
+
+            # Row 5: pi0 daughter (independent branch from row 4)
+            if PI0_PDG in parent_pdgs:
+                c_pi0_daughter += 1
+
+            # Row 6: not ISR (parent is not an electron)
+            if ELECTRON_PDG not in parent_pdgs:
+                c_not_isr += 1
+
+                # Row 7: fast-simmed? (CC3 only, branches from row 6)
+                if is_cc3 and mc.isHandledByFastSim():
+                    c_fastsim += 1
+
+    return {
+        "label"          : label,
+        "events"         : n_events,
+        "pfo_pdg22"      : c_pfo_pdg22,
+        "has_link"       : c_has_link,
+        "genstat1"       : c_genstat1,
+        "e10"            : c_e10,
+        "pi0_daughter"   : c_pi0_daughter,
+        "not_isr"        : c_not_isr,
+        "fastsim"        : c_fastsim if is_cc3 else None,
+        "is_cc3"         : is_cc3,
+    }
+
+
+def pct(numerator, denominator):
+    """Format as percentage string, handle zero denominator."""
+    if denominator == 0:
+        return "  —  "
+    return f"{100.0 * numerator / denominator:.1f}%"
+
+
+def print_table(g4, cc3):
+    """Print side-by-side funnel table."""
+
+    w_label = 52
+    w_col   = 22
+
+    header_g4  = f"{'G4 reco':^{w_col}}"
+    header_cc3 = f"{'CC3 reco':^{w_col}}"
+    sep = "─" * (w_label + 2 * w_col + 4)
+
+    print()
+    print("=" * len(sep))
+    print("  RECO PHOTON FUNNEL — G4 vs CC3")
+    print(f"  {g4['events']} events each")
+    print("=" * len(sep))
+    print(f"  {'Cut / Selection':<{w_label}} {header_g4} {header_cc3}")
+    print(sep)
+
+    def row(label, g4_n, cc3_n, g4_denom=None, cc3_denom=None, cc3_only=False):
+        g4_str  = f"{g4_n:>6}" if not cc3_only else f"{'—':>6}"
+        cc3_str = f"{cc3_n:>6}"
+        if g4_denom is not None and not cc3_only:
+            g4_str  += f"  ({pct(g4_n,  g4_denom):>6})"
+        else:
+            g4_str  += " " * 10
+        if cc3_denom is not None:
+            cc3_str += f"  ({pct(cc3_n, cc3_denom):>6})"
+        print(f"  {label:<{w_label}} {g4_str:<{w_col}} {cc3_str:<{w_col}}")
+
+    # Row 1 — baseline, no denominator shown
+    row("1. PFOs with PDG == 22",
+        g4["pfo_pdg22"], cc3["pfo_pdg22"])
+
+    # Row 2 — % of row 1
+    row("2. Have a RecoMCTruthLink match",
+        g4["has_link"], cc3["has_link"],
+        g4_denom=g4["pfo_pdg22"], cc3_denom=cc3["pfo_pdg22"])
+
+    # Row 3 — % of row 2
+    row("3. Matched MC: genStatus==1 photon",
+        g4["genstat1"], cc3["genstat1"],
+        g4_denom=g4["has_link"], cc3_denom=cc3["has_link"])
+
+    # Row 4 — % of row 3
+    row("4. MC energy >= 10 GeV",
+        g4["e10"], cc3["e10"],
+        g4_denom=g4["genstat1"], cc3_denom=cc3["genstat1"])
+
+    print(f"  {'  ├─ Branch A: pi0 daughter cut':<{w_label}}")
+
+    # Row 5 — % of row 4
+    row("  │  5. Parent PDG == 111 (π⁰ daughter)",
+        g4["pi0_daughter"], cc3["pi0_daughter"],
+        g4_denom=g4["e10"], cc3_denom=cc3["e10"])
+
+    print(f"  {'  └─ Branch B: ISR rejection cut':<{w_label}}")
+
+    # Row 6 — % of row 4
+    row("     6. Parent PDG != 11 (not ISR)",
+        g4["not_isr"], cc3["not_isr"],
+        g4_denom=g4["e10"], cc3_denom=cc3["e10"])
+
+    # Row 7 — CC3 only, % of row 6
+    row("     7. isHandledByFastSim (CC3 only)",
+        0, cc3["fastsim"],
+        cc3_denom=cc3["not_isr"],
+        cc3_only=True)
+
+    print(sep)
+    print()
+    print("  Notes:")
+    print("  - Rows 1-4 are a strict sequential funnel (each % is of the row above).")
+    print("  - Rows 5 and 6 are independent branches, both from row 4.")
+    print("  - Row 7 uses MC truth flag — only meaningful in CC3.")
+    print("  - 'not ISR' = parent PDG is not electron (PDG 11).")
+    print("  - All MC quantities refer to the best-matched MCParticle via RecoMCTruthLink.")
+    print()
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+print("\nProcessing G4 reco file ...")
+g4_stats = process_file("G4", G4_FILE, is_cc3=False)
+
+print("Processing CC3 reco file ...")
+cc3_stats = process_file("CC3", CC3_FILE, is_cc3=True)
+
+if g4_stats and cc3_stats:
+    print_table(g4_stats, cc3_stats)
+else:
+    print("ERROR: one or both files could not be processed.")

@@ -26,7 +26,7 @@ SIM.macroFile = ""
 ## number of events to simulate, used in batch mode
 SIM.numberOfEvents = 1000
 ## Outputfile from the simulation,only lcio output is supported
-SIM.outputFile = "tau_pi0_SIM_geant4.edm4hep.root"
+SIM.outputFile = ""
 ## Physics list to use in simulation
 SIM.physicsList = None
 ## Verbosity use integers from 1(most) to 7(least) verbose

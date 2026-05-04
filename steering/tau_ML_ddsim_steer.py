@@ -15,7 +15,7 @@ SIM = DD4hepSimulation()
 SIM.compactFile = ""
 ## Lorentz boost for the crossing angle, in radian!
 SIM.crossingAngleBoost = 7.e-3*rad
-SIM.enableDetailedShowerMode = True
+SIM.enableDetailedShowerMode = False #set to false after isHandledbyFastsim addition
 SIM.enableG4GPS = False
 SIM.enableG4Gun = False
 SIM.enableGun = False #provide filtered particle genertor input file 
@@ -26,7 +26,7 @@ SIM.macroFile = ""
 ## number of events to simulate, used in batch mode
 SIM.numberOfEvents = 1000
 ## Outputfile from the simulation,only lcio output is supported
-SIM.outputFile = "tau_pi0_SIM_caloclouds.edm4hep.root"
+SIM.outputFile = ""       
 ## Physics list to use in simulation
 SIM.physicsList = None
 ## Verbosity use integers from 1(most) to 7(least) verbose
@@ -330,7 +330,7 @@ def aiDanceTorch(kernel):
     elif CaloClouds == True:
         ml_file = "/afs/desy.de/user/a/alimuham/thesis-ml-sim/models/CC3_SF_2A.pt"
         ml_model = "CaloCloudsTwoAngleModelPolyhedraBarrelTorchModel/BarrelModelTorch"
-        ml_model_1 = "CaloCloudsTwoAngleModelPolyhedraBarrelTorchModel/EndcapModelTorch"
+        ml_model_1 = "CaloCloudsTwoAngleModelEndcapTorchModel/EndcapModelTorch"
         ml_correct_angles = False
     elif L2LFlows == True:
         # ml_file = "../models/L2LFlowsx9.pt"
@@ -405,7 +405,7 @@ def aiDanceTorch(kernel):
         "e+": 10 * GeV,
         "e-": 10 * GeV,
         "gamma": 10 * GeV,
-    }  # Triggered slightly lower for reliability
+    } 
     model1.ModelPath = ml_file
     model1.OptimizeFlag = 1
     model1.IntraOpNumThreads = 1

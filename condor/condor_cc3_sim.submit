@@ -1,0 +1,10 @@
+universe          = vanilla
+notification      = Error
+notify_user       = muhammed.adnan.ali@desy.de
+initialdir        = /afs/desy.de/user/a/alimuham/thesis-ml-sim/
++RequestRuntime   = 36000
+RequestMemory     = 10G
+JobBatchName      = ILD-sim-caloclouds-100k
+executable        = /usr/bin/sh
+arguments         = "/afs/desy.de/user/a/alimuham/thesis-ml-sim/condor/condor_sim.sh $(Process) cc3"
+queue 50

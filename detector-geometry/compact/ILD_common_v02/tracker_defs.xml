@@ -1,0 +1,18 @@
+<define>
+
+  <constant name="VXD_radius_r1" value="16*mm"/>
+  <constant name="VXD_length_r1" value="62.5*mm"/>
+  <constant name="VXD_radius_r3" value="37*mm"/>
+  <constant name="VXD_length_r3" value="125*mm"/>
+  <constant name="VXD_radius_r5" value="58*mm"/>
+
+
+  <constant name="tracker_region_rmax" value="TPC_outer_radius" />
+  <constant name="tracker_region_zmax" value="Ecal_endcap_zmin" />
+
+  <!-- for all-silicon outer tracker -->
+  <constant name="OuterTracker_inner_radius"  value="TPC_inner_radius"/>
+  <constant name="OuterTracker_outer_radius"  value="TPC_outer_radius+Ecal_Tpc_gap-1*mm"/>
+  <constant name="OuterTracker_half_length"   value="TPC_Ecal_Hcal_barrel_halfZ"/>
+
+</define>

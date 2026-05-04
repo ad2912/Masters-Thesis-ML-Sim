@@ -1,0 +1,170 @@
+"""
+reco_tau_inspection.py
+
+Physics question: What does TaJetClustering actually produce for tau->pi0->gamma gamma events?
+  - What PFO types (PDG) make up each IsolatedTau?
+  - Does the charge make sense?
+  - What is the reconstructed invariant mass?
+  - Does RecoMCTruthLink successfully connect reco taus back to truth?
+  - What is the tau multiplicity distribution over 1000 events?
+
+Expected outcome (stated before running):
+  - 0 or 1 IsolatedTau per event; efficiency < 100% expected
+  - Constituent PFOs should be photon-type (PDG 22) — decay is purely neutral
+  - Charge likely 0 (no charged tracks in pi0->gamma gamma)
+  - Mass near pi0 mass (~135 MeV) or slightly above
+  - RecoMCTruthLink: unknown — open question from previous session
+
+Usage:
+  python3 reco_tau_inspection.py <reco_file.edm4hep.root> [--nevents 20]
+
+Output: human-readable printout, no plots.
+"""
+import sys
+import argparse
+import math
+from collections import Counter
+import podio
+import podio.root_io
+
+# PDG codes mapping
+PDG_NAMES = {
+    22:   "photon",
+    11:   "electron",
+    -11:  "positron",
+    13:   "muon",
+    -13:  "antimuon",
+    211:  "pi+",
+    -211: "pi-",
+    111:  "pi0",
+    15:   "tau-",
+    -15:  "tau+",
+    12:   "nu_e",
+    14:   "nu_mu",
+    16:   "nu_tau",
+    2112: "neutron",
+    2212: "proton",
+}
+
+def pdg_name(pdg):
+    return PDG_NAMES.get(abs(pdg), f"PDG={pdg}")
+
+def invariant_mass(energy, px, py, pz):
+    # Compute invariant mass from 4-vector
+    m2 = energy**2 - px**2 - py**2 - pz**2
+    if m2 < 0:
+        return None
+    return math.sqrt(m2)
+
+def pt(px, py):
+    return math.sqrt(px**2 + py**2)
+
+def theta(px, py, pz):
+    p = math.sqrt(px**2 + py**2 + pz**2)
+    if p == 0:
+        return None
+    return math.acos(pz / p) * 180.0 / math.pi
+
+def phi(px, py):
+    return math.atan2(py, px) * 180.0 / math.pi
+
+def separator(char="-", width=72):
+    print(char * width)
+
+def main():
+    parser = argparse.ArgumentParser(description="Inspect IsolatedTaus collection")
+    parser.add_argument("input_file", help="Path to REC edm4hep root file")
+    parser.add_argument("--nevents", type=int, default=20, help="Events to print")
+    args = parser.parse_args()
+
+    try:
+        reader = podio.root_io.Reader(args.input_file)
+    except Exception as e:
+        print(f"Error opening file: {e}")
+        return
+
+    frames = reader.get("events")
+    n_total = len(frames)
+    print(f"\nFile: {args.input_file}")
+    print(f"Total events: {n_total}\n")
+
+    tau_mult = Counter()
+    charge_dist = Counter()
+    constituent_pdg_dist = Counter()
+    n_constituents_dist = Counter()
+    masses = []
+    link_found = 0
+    link_pdg_targets = Counter()
+    n_events_with_tau = 0
+
+    for i_evt, frame in enumerate(frames):
+        # Safely get collections
+        try: iso_taus = frame.get("IsolatedTaus")
+        except: iso_taus = []
+        
+        try: pandora_pfos = frame.get("PandoraPFOs")
+        except: pandora_pfos = []
+
+        try: mc_particles = frame.get("MCParticles")
+        except: mc_particles = []
+
+        try: reco_mc_link = frame.get("RecoMCTruthLink")
+        except: reco_mc_link = []
+
+        n_taus = len(iso_taus) if iso_taus is not None else 0
+        tau_mult[n_taus] += 1
+        if n_taus > 0: n_events_with_tau += 1
+
+        # Build Link Lookup
+        reco_to_mc = {}
+        if reco_mc_link is not None:
+            for link in reco_mc_link:
+                reco = link.getFrom()
+                mc   = link.getTo()
+                if reco and mc:
+                    key = (reco.getObjectID().collectionID, reco.getObjectID().index)
+                    if key not in reco_to_mc: reco_to_mc[key] = []
+                    reco_to_mc[key].append(mc)
+
+        if i_evt < args.nevents:
+            separator("=")
+            print(f"EVENT {i_evt} | PFOs: {len(pandora_pfos) if pandora_pfos else 0} | Taus: {n_taus}")
+            separator()
+
+            if n_taus > 0:
+                for i_tau, tau in enumerate(iso_taus):
+                    mom = tau.getMomentum()
+                    e, q = tau.getEnergy(), tau.getCharge()
+                    m = invariant_mass(e, mom.x, mom.y, mom.z)
+                    
+                    print(f"\n  IsolatedTau #{i_tau}: E={e:.3f}, Mass={m*1000 if m else 0:.1f} MeV, Q={int(q)}")
+                    
+                    parts = tau.getParticles()
+                    print(f"    Constituents: {len(parts)}")
+                    for p in parts:
+                        constituent_pdg_dist[p.getType()] += 1
+                        print(f"      - Type: {p.getType()} ({pdg_name(p.getType())}) E: {p.getEnergy():.3f}")
+
+                    # Link check
+                    t_key = (tau.getObjectID().collectionID, tau.getObjectID().index)
+                    matches = reco_to_mc.get(t_key, [])
+                    if matches:
+                        link_found += 1
+                        for m_part in matches:
+                            link_pdg_targets[m_part.getPDG()] += 1
+                            print(f"      -> Linked to MC: {pdg_name(m_part.getPDG())}")
+                    
+                    charge_dist[int(q)] += 1
+                    n_constituents_dist[len(parts)] += 1
+                    if m is not None: masses.append(m)
+
+    separator("=", 72)
+    print("SUMMARY")
+    print(f"Events with Tau: {n_events_with_tau}/{n_total}")
+    if masses:
+        import statistics
+        print(f"Avg Tau Mass: {statistics.mean(masses)*1000:.1f} MeV")
+    separator("=", 72)
+
+if __name__ == "__main__":
+    main()

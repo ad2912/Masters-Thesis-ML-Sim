@@ -1,0 +1,113 @@
+import ROOT
+import os
+from math import sqrt
+
+# --- Configuration & Paths ---
+PLOT_DIR = "/afs/desy.de/user/a/alimuham/thesis-ml-sim/analysis"
+RECO_DIR = "/data/dust/user/alimuham/thesis/reco"
+
+FILES = {
+    "G4":  os.path.join(RECO_DIR, "tau-pi0-g4-taureco-1000events-test_REC.edm4hep.root"),
+    "CC3": os.path.join(RECO_DIR, "tau-pi0-cc3-taureco-1000events-test_REC.edm4hep.root")
+}
+
+if not os.path.exists(PLOT_DIR):
+    os.makedirs(PLOT_DIR)
+
+# Load libraries
+ROOT.gSystem.Load("libedm4hep")
+ROOT.gSystem.Load("libpodio")
+
+def calculate_mass(p1, p2):
+    e1, e2 = p1.getEnergy(), p2.getEnergy()
+    m1, m2 = p1.getMomentum(), p2.getMomentum()
+    px, py, pz = m1.x + m2.x, m1.y + m2.y, m1.z + m2.z
+    p_sq = px**2 + py**2 + pz**2
+    m_sq = (e1 + e2)**2 - p_sq
+    return sqrt(max(0, m_sq))
+
+def analyze_sample(label, file_path):
+    print(f"Processing {label}...")
+    
+    # In many nightly versions, ROOTFrameReader takes a single string.
+    # We use this to access the new Frame-based event structure.
+    reader = ROOT.podio.ROOTFrameReader(file_path)
+    
+    h_mass = ROOT.TH1F(f"h_mass_{label}", f"{label} Pi0 Mass;Mass [GeV];Entries", 80, 0, 0.4)
+    h_res  = ROOT.TH1F(f"h_res_{label}", f"{label} Photon E Res; (E_{{reco}} - E_{{true}})/E_{{true}};Entries", 100, -0.2, 0.2)
+    h_mult = ROOT.TH1I(f"h_mult_{label}", f"{label} Photon Multiplicity;N Photons;Events", 10, 0, 10)
+    
+    # Iterate through entries using the 'events' category
+    for i in range(reader.getEntries("events")):
+        frame = reader.readEntry("events", i)
+        
+        pfos = frame.get("PandoraPFOs")
+        truth_links = frame.get("RecoMCTruthLink")
+        
+        # Filter Photons
+        photons = [p for p in pfos if abs(p.getType()) == 22]
+        h_mult.Fill(len(photons))
+        
+        # Energy Resolution via RecoMCTruthLink
+        for ph in photons:
+            best_weight = 0
+            true_energy = -1
+            for link in truth_links:
+                if link.getFrom() == ph:
+                    if link.getWeight() > best_weight:
+                        best_weight = link.getWeight()
+                        true_energy = link.getTo().getEnergy()
+            
+            if true_energy > 0:
+                h_res.Fill((ph.getEnergy() - true_energy) / true_energy)
+
+        # Invariant Mass
+        if len(photons) >= 2:
+            photons.sort(key=lambda x: x.getEnergy(), reverse=True)
+            h_mass.Fill(calculate_mass(photons[0], photons[1]))
+            
+    return h_mass, h_res, h_mult
+
+# --- Run Analysis ---
+results = {}
+for label, path in FILES.items():
+    if os.path.exists(path):
+        try:
+            results[label] = analyze_sample(label, path)
+        except Exception as e:
+            print(f"Failed to process {label}: {e}")
+    else:
+        print(f"File not found: {path}")
+
+# --- Plotting ---
+if len(results) < 2:
+    print("Not enough data to compare G4 and CC3.")
+    exit()
+
+ROOT.gStyle.SetOptStat(0)
+c = ROOT.TCanvas("c", "Comparison", 1800, 600)
+c.Divide(3, 1)
+
+for i, key in enumerate(["Mass", "Res", "Mult"]):
+    c.cd(i+1)
+    h_g4 = results["G4"][i]
+    h_cc3 = results["CC3"][i]
+    
+    if h_g4.Integral() > 0: h_g4.Scale(1.0 / h_g4.Integral())
+    if h_cc3.Integral() > 0: h_cc3.Scale(1.0 / h_cc3.Integral())
+    
+    h_g4.SetLineColor(ROOT.kBlack)
+    h_cc3.SetLineColor(ROOT.kRed)
+    h_g4.SetLineWidth(2)
+    h_cc3.SetLineWidth(2)
+    
+    h_g4.Draw("HIST")
+    h_cc3.Draw("HIST SAME")
+    
+    leg = ROOT.TLegend(0.6, 0.7, 0.9, 0.9)
+    leg.AddEntry(h_g4, "Geant4", "l")
+    leg.AddEntry(h_cc3, "CaloClouds3", "l")
+    leg.Draw()
+
+c.SaveAs(os.path.join(PLOT_DIR, "pi0_reco_comparison_v3.png"))
+print(f"Done. Plots in {PLOT_DIR}")
